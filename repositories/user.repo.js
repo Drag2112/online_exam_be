@@ -61,7 +61,8 @@ const getUserByIdAndName = async (userId, userName) => {
 const getUsersPaging = async (searchValue, offsetValue = 0, limitValue = 10) => {
     const querySql = 
         `select 
-            u.user_id, u.user_name, u.full_name, r.role_id, r.role_name, u.date_of_birth, u.email, u.phone_number, u.is_locked
+            u.user_id, u.user_name, u.full_name, r.role_id, r.role_name, u.full_name, 
+            u.gender, u.date_of_birth, u.email, u.phone_number, u.address, u.is_locked
         from users u
         left join roles r on r.role_id = u.role_id
         where 
@@ -106,6 +107,34 @@ const lockUser = async (userId, lock) => {
     return response
 }
 
+const getStudentsByClassId = async (classId) => {
+    const querySql = 
+        `select u.user_id, u.user_name , u.full_name 
+        from user_class uc 
+        inner join users u on u.user_id = uc.user_id and uc.is_deleted = 0
+        where uc.class_id = $1::integer and u.is_deleted = 0 and u.is_locked = 0;`
+    
+    const response = await _postgresDB.query(querySql, [classId])
+    return response.rows
+}
+
+const updatePasswordUser = async (userId, newPassword) => {
+    const commandSql = `update users set password_hash = $1::text where user_id = $2::integer and is_deleted = 0;`
+    const response = await _postgresDB.query(commandSql, [newPassword, userId])
+    return response
+}
+
+const updateUserInfor = async (fullName, roleId, dateOfBirth, gender, email, phoneNumber, address, userId) => {
+    const commandSql = 
+        `update users 
+        set 
+            full_name = $1::text, role_id = $2::integer, date_of_birth = $3::text, 
+            gender = $4::text, email = $5::text, phone_number = $6::text, address = $7::text 
+        where user_id = $8::integer and is_deleted = 0;`
+    const response = await _postgresDB.query(commandSql, [fullName, roleId, dateOfBirth, gender, email, phoneNumber, address, userId])
+    return response
+}
+
 module.exports = {
     getUsers,
     insertUser,
@@ -113,5 +142,8 @@ module.exports = {
     getUserByEmail,
     getUserByIdAndName,
     getUsersPaging,
-    lockUser
+    getStudentsByClassId,
+    lockUser,
+    updatePasswordUser,
+    updateUserInfor
 }
