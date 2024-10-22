@@ -110,18 +110,18 @@ const getResultsByExamId = async (examId) => {
     return response.rows
 }
 
-const insertUserExam = async (userId, classId, examId, startTime, endTime, score) => {
+const insertAttempt = async (userId, classId, examId, startTime, endTime, score) => {
     const commandSql = 
-        `insert into user_exam (user_id, class_id, exam_id, start_time, end_time, score, created_time, updated_time, is_deleted)
+        `insert into attempts (user_id, class_id, exam_id, start_time, end_time, score, created_time, updated_time, is_deleted)
         values ($1::integer, $2::integer, $3::integer, $4, $5, $6::numeric, now(), now(), 0)
-        returning id;`
+        returning attempt_id;`
     const response = await _postgresDB.query(commandSql, [userId, classId, examId, startTime, endTime, score])
     return response
 }
 
-const insertUserExamQuestion = async (userExamId, userResults) => {
+const insertAttemptAnswer = async (attemptId, userResults) => {
     let commandSql = 
-        `insert into user_exam_question (user_exam_id, question_id, choosed_result_key, choosed_result_value)
+        `insert into attempt_answer (attempt_id, question_id, choosed_result_key, choosed_result_value)
         values `
 
     let index = 0
@@ -132,26 +132,72 @@ const insertUserExamQuestion = async (userExamId, userResults) => {
             commandSql += ','
         }
 
-        params.push(userExamId, userResults[i].questionId, userResults[i].choosedResultKey, userResults[i].choosedResultValue)
+        params.push(attemptId, userResults[i].questionId, userResults[i].choosedResultKey, userResults[i].choosedResultValue)
     }
 
     const response = await _postgresDB.query(commandSql, params)
     return response
 }
 
-const getUserExam = async (userId, classId, examId) => {
+const getAttempt = async (userId, classId, examId) => {
     const querySql = 
-        `select * from user_exam ue
+        `select * from attempts ue
         where ue.user_id = $1::integer and ue.class_id = $2::integer and ue.exam_id = $3::integer and ue.is_deleted = 0;`
     const response = await _postgresDB.query(querySql, [userId, classId, examId])
     return response.rows[0]
 }
 
-const getUserExamQuestion = async (userExamId) => {
+const getAttemptAnswer = async (attempt_id) => {
     const querySql = 
-        `select * from user_exam_question ueq 
-        where ueq.user_exam_id = $1::integer;`
-    const response = await _postgresDB.query(querySql, [userExamId])
+        `select * from attempt_answer aa 
+        where aa.attempt_id = $1::integer;`
+    const response = await _postgresDB.query(querySql, [attempt_id])
+    return response.rows
+}
+
+const insertTestCases = async (testcases) => {
+    let commandSql = 
+        `insert into test_cases
+            (question_id, input_data, expected_output, is_sample_case, created_time, updated_time, is_deleted)
+        values `
+    
+    let index = 0
+    let params = []
+    for (let i = 0; i < testcases.length; i++) {
+        commandSql += ` ($${++index}::integer, $${++index}::text, $${++index}::text, $${++index}::integer, now(), now(), 0)`
+        if (i < testcases.length - 1) {
+            commandSql += ','
+        }
+
+        params.push(testcases[i].questionId, testcases[i].inputData, testcases[i].expectedOutput, testcases[i].isSampleCase)
+    }
+
+    commandSql += ' returning test_case_id;'
+    const response = await _postgresDB.query(commandSql, params)
+    return response
+}
+
+const deleteTestCases = async (examId) => {
+    const commandSql = 
+        `delete from test_cases where question_id in (select question_id from questions where exam_id = $1::integer);`
+    const response = await _postgresDB.query(commandSql, [examId])
+    return response
+}
+
+const getTestCasesByExamId = async (examId, getOnlySampleCase = false) => {
+    let querySql = 
+        `select * from test_cases t
+        where 
+            t.question_id in (
+                select q.question_id from questions q where q.exam_id = $1::integer and q.is_deleted = 0
+            ) `
+
+    if (getOnlySampleCase) {
+        querySql += ' and t.is_sample_case = 1 '
+    }
+    querySql += ' and t.is_deleted = 0 order by t.question_id, t.test_case_id asc '
+
+    const response = await _postgresDB.query(querySql, [examId])
     return response.rows
 }
 
@@ -166,8 +212,11 @@ module.exports = {
     getExamById,
     getQuestionsByExamId,
     getResultsByExamId,
-    insertUserExam,
-    insertUserExamQuestion,
-    getUserExam,
-    getUserExamQuestion
+    insertAttempt,
+    insertAttemptAnswer,
+    getAttempt,
+    getAttemptAnswer,
+    insertTestCases,
+    deleteTestCases,
+    getTestCasesByExamId
 }

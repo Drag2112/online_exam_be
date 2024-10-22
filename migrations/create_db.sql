@@ -25,6 +25,7 @@ create table roles (
 create table public.class (
 	Class_Id			serial			not null primary key,
 	Teacher_Id			int 			null,
+	Subject_Id			int				null,
 	Class_Code			varchar(50)		null,
 	Class_Name			varchar(2000)	null,
 	Description			text			null,
@@ -53,8 +54,8 @@ create table user_class (
 	Is_Deleted			int			null
 );
 
-create table user_exam (
-	Id					serial			not null primary key,
+create table attempts (
+	Attempt_Id			serial			not null primary key,
 	User_Id 			int				null,
 	Class_Id 			int				null,
 	Exam_Id				int 			null,
@@ -69,6 +70,8 @@ create table user_exam (
 create table exam (
 	Exam_Id				serial			not null primary key,
 	Class_Id			int				null,
+	subject_id 			int 			null,
+	exam_code 			uuid 			null,
 	Exam_Name			varchar(1000)	null,
 	Description			text			null,
 	Total_Question		int				null,
@@ -76,15 +79,21 @@ create table exam (
 	Is_Published		int				null,
 	Created_Time 		timestamp 		null,
 	Updated_Time		timestamp		null,
-	Is_Deleted			int				null
+	Is_Deleted			int				null,
+	Max_Score			numeric			null,
+	is_in_storage 		int 			null
 );
 
-create table user_exam_question (
+create table attempt_answer (
 	Id						serial			not null primary key,
-	User_Exam_Id			int				null,
+	Attempt_Id				int				null,
 	Question_Id				int				null,
 	Choosed_Result_Key		int				null,
-	Choosed_Result_Value 	text 			null
+	Choosed_Result_Value 	text 			null,
+	Submitted_Code 			text 			null,
+	Score 					decimal 		null,
+	Is_Correct_Answer 		int 			null,
+	Total_Correct_Test_Cases int 			null
 );
 
 create table questions (
@@ -95,7 +104,9 @@ create table questions (
 	Question_Content  	text			null,
 	Created_Time 		timestamp 		null,
 	Updated_Time		timestamp		null,
-	Is_Deleted			int				null
+	Is_Deleted			int				null,
+	Max_Score 			numeric 		null,
+	Total_Test_Cases 	int 			null
 );
 
 create table results (
@@ -120,4 +131,22 @@ create table role_app_function (
 	id 					serial			not null primary key,
 	role_id				int				null,
 	function_id			int				null
+);
+
+create table test_cases (
+	test_case_id			serial			not null primary key,
+	question_id				int				null,
+	input_data				text			null,
+	expected_output			text			null,
+	is_deleted				int 			null,
+	created_time 			timestamp 		null,
+	updated_time			timestamp		null,
+	is_sample_case 			int 			null
+);
+
+create table subject (
+	subject_id			serial			not null primary key,
+	subject_name		varchar(2000)	null,
+	subject_code 		varchar(100) 	null,
+	is_deleted			int				null
 );

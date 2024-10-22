@@ -25,6 +25,7 @@ const createNewClass = async (payload) => {
     const teacherId = payload.teacherId || 0
     const classCode = payload.classCode || ''
     const className = payload.className || ''
+    const subjectId = payload.subjectId || 0
     const description = payload.description || ''
 
     const classExist = await classRepo.getClassByClassCode(classCode)
@@ -32,7 +33,7 @@ const createNewClass = async (payload) => {
         return new ResponseService(constant.RESPONSE_CODE.FAIL, 'Mã lớp học đã tồn tại. Vui lòng kiểm tra lại!')
     }
 
-    const result = await classRepo.insertClass(teacherId, classCode, className, description)
+    const result = await classRepo.insertClass(teacherId, classCode, className, subjectId, description)
     if (result.rowCount > 0 && result.rows[0].class_id) {
         return new ResponseService(constant.RESPONSE_CODE.SUCCESS)
     }
@@ -79,6 +80,8 @@ const getClassDetail = async (data, roleId) => {
         className: classExist.class_name,
         teacherName: `${classExist.teacher_full_name} (${classExist.teacher_user_name})`,
         description: classExist.description,
+        subjectCode: classExist.subject_code,
+        subjectName: classExist.subject_name
     }
 
     const students = await userRepo.getStudentsByClassId(classId)
@@ -202,6 +205,7 @@ const createExam = async (data, roleId) => {
 
         const questionIds = insertQuestionResult.rows
         let resultList = []
+        let testcaseList = []
 
         for (let i = 0; i < questions.length; i++) {
             const questionId = questionIds[i].question_id
@@ -209,13 +213,29 @@ const createExam = async (data, roleId) => {
                 result.questionId = questionId
                 result.isCorrect = Number(result.isCorrect)
                 return result
-            })
+            }) || []
             resultList.push(...questionResults)
+
+            const testcases = questions[i]?.testcases?.map(testcase => {
+                testcase.questionId = questionId
+                testcase.isSampleCase = Number(testcase.isSampleCase)
+                return testcase
+            }) || []
+            testcaseList.push(...testcases)
         }
 
-        const insertResult = await examRepo.insertResults(resultList)
-        if (insertResult.rowCount !== resultList.length) {
-            return new ResponseService(constant.RESPONSE_CODE.FAIL, 'Đã có lỗi xảy ra. Vui lòng kiểm tra lại!')
+        if (resultList.length > 0) {
+            const insertResult = await examRepo.insertResults(resultList)
+            if (insertResult.rowCount !== resultList.length) {
+                return new ResponseService(constant.RESPONSE_CODE.FAIL, 'Đã có lỗi xảy ra khi lưu đáp án. Vui lòng kiểm tra lại!')
+            }
+        }
+        
+        if (testcaseList.length > 0) {
+            const insertTestCase = await examRepo.insertTestCases(testcaseList)
+            if (insertTestCase.rowCount !== testcaseList.length) {
+                return new ResponseService(constant.RESPONSE_CODE.FAIL, 'Đã có lỗi xảy ra khi lưu test case. Vui lòng kiểm tra lại!')
+            }
         }
     }
 
@@ -241,8 +261,11 @@ const updateExam = async (data, roleId) => {
         return new ResponseService(constant.RESPONSE_CODE.FAIL, 'Đã có lỗi xảy ra. Vui lòng kiểm tra lại!')
     }
 
-    // Xóa các câu hỏi và đáp án cũ đi để insert mới
-    await examRepo.deleteResults(examId)
+    // Xóa các câu hỏi, đáp án, test case cũ đi để insert mới (câu hỏi xóa sau cùng)
+    await Promise.all([
+        examRepo.deleteTestCases(examId),
+        examRepo.deleteResults(examId)
+    ])
     await examRepo.deleteQuestions(examId)
 
     if (questions.length > 0) {
@@ -253,6 +276,7 @@ const updateExam = async (data, roleId) => {
 
         const questionIds = insertQuestionResult.rows
         let resultList = []
+        let testcaseList = []
 
         for (let i = 0; i < questions.length; i++) {
             const questionId = questionIds[i].question_id
@@ -260,13 +284,29 @@ const updateExam = async (data, roleId) => {
                 result.questionId = questionId
                 result.isCorrect = Number(result.isCorrect)
                 return result
-            })
+            }) || []
             resultList.push(...questionResults)
+
+            const testcases = questions[i]?.testcases?.map(testcase => {
+                testcase.questionId = questionId
+                testcase.isSampleCase = Number(testcase.isSampleCase)
+                return testcase
+            }) || []
+            testcaseList.push(...testcases)
         }
 
-        const insertResult = await examRepo.insertResults(resultList)
-        if (insertResult.rowCount !== resultList.length) {
-            return new ResponseService(constant.RESPONSE_CODE.FAIL, 'Đã có lỗi xảy ra. Vui lòng kiểm tra lại!')
+        if (resultList.length > 0) {
+            const insertResult = await examRepo.insertResults(resultList)
+            if (insertResult.rowCount !== resultList.length) {
+                return new ResponseService(constant.RESPONSE_CODE.FAIL, 'Đã có lỗi xảy ra khi lưu đáp án. Vui lòng kiểm tra lại!')
+            }
+        }
+        
+        if (testcaseList.length > 0) {
+            const insertTestCase = await examRepo.insertTestCases(testcaseList)
+            if (insertTestCase.rowCount !== testcaseList.length) {
+                return new ResponseService(constant.RESPONSE_CODE.FAIL, 'Đã có lỗi xảy ra khi lưu test case. Vui lòng kiểm tra lại!')
+            }
         }
     }
 
@@ -287,7 +327,10 @@ const deleteExam = async (data, roleId) => {
         }
     }
 
-    await examRepo.deleteResults(examId)
+    await Promise.all([
+        examRepo.deleteTestCases(examId),
+        examRepo.deleteResults(examId)
+    ])
     await examRepo.deleteQuestions(examId)
 
     const deletedExam = await examRepo.deleteExam(examId)
@@ -311,8 +354,15 @@ const viewExam = async (data) => {
         return new ResponseService(constant.RESPONSE_CODE.FAIL, 'Bài thi không tồn tại hoặc đã bị xóa khỏi hệ thống!')
     }
 
-    const questions = await examRepo.getQuestionsByExamId(examId)
-    const results = await examRepo.getResultsByExamId(examId)
+    const dataQueries = await Promise.all([
+        examRepo.getQuestionsByExamId(examId),
+        examRepo.getResultsByExamId(examId),
+        examRepo.getTestCasesByExamId(examId, false)
+    ])
+
+    const questions = dataQueries[0] || []
+    const results = dataQueries[1] || []
+    const testcases = dataQueries[2] || []
 
     let result = {
         examId,
@@ -338,6 +388,16 @@ const viewExam = async (data) => {
             }
         })
         questionItem.results = resultList
+
+        let testcaseList = testcases?.filter(x => x.question_id === question.question_id)?.map(x => {
+            return {
+                isSampleCase: Boolean(x.is_sample_case),
+                inputData: x.input_data,
+                expectedOutput: x.expected_output
+            }
+        })
+        questionItem.testcases = testcaseList
+
         questionList.push(questionItem)
     }
     result.questions = questionList
@@ -359,15 +419,16 @@ const viewExamByStudent = async (data, userId) => {
 
     const questions = await examRepo.getQuestionsByExamId(examId)
     const results = await examRepo.getResultsByExamId(examId)
-    const userExam = await examRepo.getUserExam(userId, classId, examId)
-    const userResults = await examRepo.getUserExamQuestion(userExam?.id || 0)
+    const testcases = await examRepo.getTestCasesByExamId(examId, true)
+    const attempt = await examRepo.getAttempt(userId, classId, examId)
+    const userResults = await examRepo.getAttemptAnswer(attempt?.attempt_id || 0)
 
     let result = {
         examId,
         examName: exam.exam_name,
         description: exam.description,
         totalMinutes: exam.total_minutes,
-        score: Number(userExam?.score || 0).toFixed(2)
+        score: Number(attempt?.score || 0).toFixed(2)
     }
 
     let questionList = []
@@ -406,8 +467,17 @@ const viewExamByStudent = async (data, userId) => {
                 }
             })
         }
-        
         questionItem.results = resultList
+
+        let testcaseList = testcases?.filter(x => x.question_id === question.question_id)?.map(x => {
+            return {
+                isSampleCase: Boolean(x.is_sample_case),
+                inputData: x.input_data,
+                expectedOutput: x.expected_output
+            }
+        })
+        questionItem.testcases = testcaseList
+
         questionList.push(questionItem)
     }
     result.questions = questionList
@@ -479,14 +549,14 @@ const submitExamResult = async (data, userId) => {
     }
 
     // Lưu kết quả làm bài
-    const insertResult1 = await examRepo.insertUserExam(userId, exam?.class_id || 0, examId, startTime, endTime, Number(totalScore.toFixed(2)))
-    if (insertResult1.rowCount === 0 || !insertResult1.rows[0].id) {
+    const insertResult1 = await examRepo.insertAttempt(userId, exam?.class_id || 0, examId, startTime, endTime, Number(totalScore.toFixed(2)))
+    if (insertResult1.rowCount === 0 || !insertResult1.rows[0].attempt_id) {
         return new ResponseService(constant.RESPONSE_CODE.FAIL, 'Đã có lỗi xảy ra. Vui lòng kiểm tra lại!')
     }
 
-    const userExamId = insertResult1.rows[0].id
+    const attemptId = insertResult1.rows[0].attempt_id
     if (userResultInsert.length > 0) {
-        const insertResult2 = await examRepo.insertUserExamQuestion(userExamId, userResultInsert)
+        const insertResult2 = await examRepo.insertAttemptAnswer(attemptId, userResultInsert)
         if (insertResult2.rowCount !== userResultInsert.length) {
             return new ResponseService(constant.RESPONSE_CODE.FAIL, 'Đã có lỗi xảy ra. Vui lòng kiểm tra lại!')
         }
@@ -495,6 +565,17 @@ const submitExamResult = async (data, userId) => {
     return new ResponseService(constant.RESPONSE_CODE.SUCCESS, '', {
         score: totalScore
     })
+}
+
+const getMasterDataSubjects = async (params) => {
+    const subjects = await classRepo.getAllSubject()
+    const results = subjects.map(s => {
+        return {
+            subjectId: s.subject_id,
+            subjectName: s.subject_name
+        }
+    })
+    return new ResponseService(constant.RESPONSE_CODE.SUCCESS, '', results)
 }
 
 module.exports = {
@@ -511,5 +592,6 @@ module.exports = {
     deleteExam,
     viewExam,
     viewExamByStudent,
-    submitExamResult
+    submitExamResult,
+    getMasterDataSubjects
 }

@@ -36,7 +36,11 @@ app.use(cors({
 app.use((req, res, next) => {
     let log = `[${req.method}] ${req.originalUrl}`
     if (req.body) {
-        log = log.concat(` ${JSON.stringify(req.body)}`)
+        if (req.originalUrl.includes('/login')) {
+            log = log.concat(` { "username": "${req.body.username || ''}" }`)
+        } else {
+            log = log.concat(` ${JSON.stringify(req.body)}`)
+        }
     }
 
     logger.info(log)
@@ -50,7 +54,7 @@ const classApi = require('./routers/class.router')
 const examApi = require('./routers/exam.router')
 const userApi = require('./routers/user.router')
 
-app.get('/health-check', (req, res) => {
+app.get('/online-exam-api/health-check', (req, res) => {
     res.status(200).json({ 
         code: 200, 
         message: `Server is running on port ${port}` 
